@@ -1,0 +1,9 @@
+[paths]
+source =
+	src
+
+[run]
+branch = true
+parallel = true
+source =
+	src
