@@ -2,6 +2,7 @@
 
 Completer
 """
+from typing import List
 import atexit
 import readline
 import os
@@ -17,9 +18,9 @@ class Completer:  # pylint: disable=too-few-public-methods
     Completer class
     """
 
-    def __init__(self, options: list):
+    def __init__(self, options: List[str]):
         self._options = sorted(options)
-        self._matches = None
+        self._matches: List[str] = []
 
     def complete(self, text: str, state: int):
         """
@@ -28,8 +29,14 @@ class Completer:  # pylint: disable=too-few-public-methods
         """
         response = None
         if state == 0:
+            origline = readline.get_line_buffer()
+            begin = readline.get_begidx()
             if text:
-                self._matches = [s for s in self._options if s and s.startswith(text)]
+                if begin == 0:
+                    self._matches = [s for s in self._options if s and s.startswith(origline)]
+                else:
+                    self._matches = [s[begin:]
+                                     for s in self._options if s and s.startswith(origline)]
             else:
                 self._matches = self._options[:]
         try:
@@ -63,4 +70,4 @@ def activate_history():
 
     atexit.register(save_history, h_len)
     readline.parse_and_bind("tab: complete")
-    readline.parse_and_bind("set editing-mode vi")
+    readline.parse_and_bind("set show-all-if-ambiguous on")

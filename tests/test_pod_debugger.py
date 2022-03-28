@@ -178,7 +178,7 @@ def test_pod_debugger_before_script(load_kube_config):
     test before_script property
     """
     _pod_debugger = PodDebugger(_debug=True, before_script="apk add git --update")
-    assert _pod_debugger.before_script == 'apk add git --update && pip install git+https://github.com/manslaughter03/python-remote-pdb'
+    assert _pod_debugger.before_script == 'apk add git --update && pip install  git+https://github.com/manslaughter03/python-remote-pdb'
 
 
 @patch("remote_pod_debugger.pod_debugger.config.load_kube_config")
@@ -240,3 +240,26 @@ def test_pod_debugger_select_object_type(input, load_kube_config, object_type):
     _pod_debugger = PodDebugger(_debug=True)
     result = _pod_debugger.select_object_type()
     assert result == object_type
+
+
+@patch("remote_pod_debugger.pod_debugger.config.load_kube_config")
+@patch("remote_pod_debugger.pod_debugger.client.AppsV1Api.read_namespaced_deployment")
+def test_pod_debugger_get_container_args(read_namespaced_deployment, load_kube_config):
+    """
+
+    test select_container for deployment
+    """
+    _container_name = "test1"
+    _args = ["--test"]
+    _pod_debugger = PodDebugger(_debug=True)
+    class container:
+        def __init__(self, name: str, args: list):
+            self.name = name
+            self.args = args
+
+    returner = MagicMock()
+    returner.spec.template.spec.containers = [container("test1", _args),
+                                              container("test2", _args)]
+    read_namespaced_deployment.return_value = returner
+    _args = _pod_debugger.get_container_args("test", "waa", _container_name)
+    assert _args == _args

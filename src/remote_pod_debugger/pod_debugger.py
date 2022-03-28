@@ -2,6 +2,7 @@
 
 Pod debugger
 """
+import argparse
 from io import IOBase
 import readline
 from typing import Union
@@ -26,6 +27,7 @@ class PodDebugger:
     def __init__(
         self,
         remote_pdb_package: str = REMOTE_PDB_PACKAGE,
+        pip_extra_args: str = None,
         before_script: str = None,
         _debug: bool = False,
     ):
@@ -44,6 +46,7 @@ class PodDebugger:
         self._debug = _debug
         self._remote_pdb_package = remote_pdb_package
         self._before_script = before_script
+        self._pip_extra_args = pip_extra_args
 
     @property
     def remote_pdb_package(self) -> str:
@@ -54,6 +57,16 @@ class PodDebugger:
             str: remote_pdb_package property
         """
         return self._remote_pdb_package
+
+    @property
+    def pip_extra_args(self) -> str:
+        """
+
+        pip_extra_args property
+        Returns:
+            str: pip_extra_args property
+        """
+        return self._pip_extra_args or ""
 
     @property
     def debug(self) -> bool:
@@ -75,7 +88,7 @@ class PodDebugger:
             str: before_script property
         """
         if self._before_script:
-            return self._before_script + f" && pip install {self.remote_pdb_package}"
+            return f"{self._before_script} && pip install {self.pip_extra_args} {self.remote_pdb_package}"
         return f"pip install {self.remote_pdb_package}"
 
     @staticmethod
@@ -277,7 +290,8 @@ class PodDebugger:
             image_name (str): docker image name
             pdb_commands (list): pdb command list
         Returns:
-           Union[client.models.V1Deployment, client.models.V1DaemonSet]: return deployment or daemonset patched
+           Union[client.models.V1Deployment, client.models.V1DaemonSet]:
+             return deployment or daemonset patched
         """
         _pdb_extra = (
             " ".join([f"-c {_item}" for _item in pdb_commands]) if pdb_commands else ""
@@ -312,3 +326,79 @@ class PodDebugger:
             )
 
         return _result
+
+    def run(self, args: argparse.Namespace):
+        """
+
+        Run pod debugger prompt
+        Args:
+            args (argparse.Namespace): args namespace
+        """
+        _namespace = args.namespace
+        if not _namespace:
+            _namespace = self.select_namespace()
+        _object_name = None
+        _object_type = None
+        if args.deployment:
+            _object_name = args.deployment
+            _object_type = "deployment"
+        elif args.daemonset:
+            _object_name = args.daemonset
+            _object_type = "daemonset"
+
+        if not _object_type:
+            _object_type = self.select_object_type()
+        if not _object_name and _object_type == "deployment":
+            _object_name = self.select_deployment(_namespace)
+        elif not _object_name and _object_type == "daemonset":
+            _object_name = self.select_daemonset(_namespace)
+
+        if not _object_name:
+            raise Exception("Can't find object to patch")
+
+        if args.backup:
+            _backup_filepath = f"/tmp/{_object_name}.yaml"
+            with open(_backup_filepath, "w", encoding="utf-8") as _file:
+                self.backup(_object_name, _namespace, _file, _object_type)
+            info(f"Backup deployment {_object_name} to {_backup_filepath}")
+
+        _container_name = (
+            self.select_container(_object_name, _namespace, _object_type)
+            if not args.container
+            else args.container
+        )
+
+        _host = input("Host of debugger?\n> ") if not args.host else args.host
+        _port = input("Port of debugger?\n> ") if not args.port else args.port
+        _container_args = self.get_container_args(_object_name, _namespace, _container_name)
+        _entrypoint = (
+            input(f"Python entrypoint? (current: {_container_args})\n> ") if not args.entrypoint else args.entrypoint
+        )
+        #   _existing_container_args = self.get_container_args(_deployment,
+        #                                                              _namespace,
+        #                                                              _container_name)
+        #   if _existing_container_args:
+        #       _entrypoint += " ".join(_existing_container_args)
+        _image_name = input("Image name?\n> ") if not args.image_name else args.image_name
+        _pdb_commands = args.pdb_command
+        if not _pdb_commands:
+            end = False
+            while not end:
+                _pdb_cmd_tmp = input('Add pdb command at startup, else enter "stop"?\n> ')
+                if _pdb_cmd_tmp == "stop":
+                    break
+                _pdb_commands.append(_pdb_cmd_tmp)
+        _patch_result = self.patch(
+            _object_name,
+            _namespace,
+            _host,
+            int(_port),
+            _entrypoint,
+            _container_name,
+            _image_name,
+            args.pdb_command,
+            _object_type,
+        )
+        if args.debug:
+            debug(f"Patch result: {_patch_result}")
+        info(f"Success patch {_object_name} {_object_type} on {_namespace} namespace.")
