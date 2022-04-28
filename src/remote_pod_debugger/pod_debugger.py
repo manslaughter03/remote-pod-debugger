@@ -173,7 +173,7 @@ class PodDebugger:
         return self._select("Wich deployment you want to patch", _deployments)
 
     def get_container_args(
-        self, name: str, namespace: str, container_name: str
+        self, name: str, namespace: str, object_type: str, container_name: str
     ) -> list:
         """
 
@@ -185,7 +185,12 @@ class PodDebugger:
         Return:
             list: list of container args
         """
-        _result = self._apps_v1_api.read_namespaced_deployment(name, namespace)
+        _fn = (
+            self._apps_v1_api.read_namespaced_deployment
+            if object_type == "deployment"
+            else self._apps_v1_api.read_namespaced_daemon_set
+        )
+        _result = _fn(name, namespace)
         for _item in _result.spec.template.spec.containers:
             if _item.name == container_name:
                 return _item.args
@@ -370,21 +375,29 @@ class PodDebugger:
 
         _host = input("Host of debugger?\n> ") if not args.host else args.host
         _port = input("Port of debugger?\n> ") if not args.port else args.port
-        _container_args = self.get_container_args(_object_name, _namespace, _container_name)
+        _container_args = self.get_container_args(
+            _object_name, _namespace, _object_type, _container_name
+        )
         _entrypoint = (
-            input(f"Python entrypoint? (current: {_container_args})\n> ") if not args.entrypoint else args.entrypoint
+            input(f"Python entrypoint? (current: {_container_args})\n> ")
+            if not args.entrypoint
+            else args.entrypoint
         )
         #   _existing_container_args = self.get_container_args(_deployment,
         #                                                              _namespace,
         #                                                              _container_name)
         #   if _existing_container_args:
         #       _entrypoint += " ".join(_existing_container_args)
-        _image_name = input("Image name?\n> ") if not args.image_name else args.image_name
+        _image_name = (
+            input("Image name?\n> ") if not args.image_name else args.image_name
+        )
         _pdb_commands = args.pdb_command
         if not _pdb_commands:
             end = False
             while not end:
-                _pdb_cmd_tmp = input('Add pdb command at startup, else enter "stop"?\n> ')
+                _pdb_cmd_tmp = input(
+                    'Add pdb command at startup, else enter "stop"?\n> '
+                )
                 if _pdb_cmd_tmp == "stop":
                     break
                 _pdb_commands.append(_pdb_cmd_tmp)
